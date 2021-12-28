@@ -12,8 +12,13 @@ const {
     Paper,
     Icon,
     Grid,Avatar,
-    styled
+    styled,
+    Button
 } = MaterialUI;
+
+const RED_INDEX = 0;
+const GREEN_INDEX = 1;
+const BLUE_INDEX = 2;
 
 const CustomSlider = styled(Slider)(({ theme }) => ({
     '& .MuiSlider-valueLabel': {
@@ -95,7 +100,7 @@ const marks = [
     },
 ];
 
-function renderSliders(sliderCount) {
+function renderSliders(sliderCount, onChangeValue) {
     let sliders = []
     let theme = redSliderTheme
     const newSliderCount = sliderCount / 3
@@ -120,9 +125,10 @@ function renderSliders(sliderCount) {
                         valueLabelDisplay="on"
                         min={0}
                         max={99}
-                        defaultValue={0}
+                        defaultValue={50}
                         marks={marks}
                         aria-label="resistor slider"
+                        onChangeCommitted = {(e,value)=> onChangeValue(value, index, y)}
                     />
                 </ThemeProvider>
 
@@ -143,6 +149,63 @@ function renderSliders(sliderCount) {
 
 
 function App() {
+    const [client, setClient] = React.useState(null);
+    const [resistor, setResistor] = React.useState({});
+    const url = `ws://8.tcp.ngrok.io:16800/mqtt`;
+    let options = {
+      keepalive: 30,
+      protocolId: "MQTT",
+      protocolVersion: 4,
+      clean: true,
+      reconnectPeriod: 1000,
+      connectTimeout: 30 * 1000,
+      will: {
+        topic: "WillMsg",
+        payload: "Connection Closed abnormally..!",
+        qos: 0,
+        retain: false,
+      },
+      rejectUnauthorized: false,
+    };
+    options.username = "mqtt-user";
+    options.password = "Ahiz@1733";
+    const mqttConnect = (host, mqttOption) => {
+        console.log('Connecting');
+        return mqtt.connect(host, mqttOption);
+    };
+
+    React.useEffect(() => {
+        if (client==null) {
+            setClient(mqttConnect(url, options))
+        }
+    })
+
+    React.useEffect(() => {
+        if (client!=null) {
+            client.on('connect', function () {
+                client.subscribe('yasiji1996/humidity', function (err) {
+                    if (!err) {
+                      client.publish('yasiji1996/humidity', 'Hello mqtt')
+                    }
+                })
+            })
+        }
+    },[client])
+
+
+    const onSliderChange = React.useCallback((value, driverIndex, colorIndex) => {
+        let tempResistorValue = resistor;
+        if(colorIndex == RED_INDEX){
+            tempResistorValue.red = value
+        }else if (colorIndex == GREEN_INDEX){
+            tempResistorValue.green = value
+        }else if (colorIndex == BLUE_INDEX) {
+            tempResistorValue.blue = value
+        }
+
+        setResistor(tempResistorValue)
+      }, []);
+
     return (
         <Container maxWidth="lg" sx={{my:10}}>
             <Grid container spacing={2}>
@@ -153,10 +216,14 @@ function App() {
                     <img src="https://upload.wikimedia.org/wikipedia/fr/thumb/6/6e/Maroc_telecom_logo.svg/1200px-Maroc_telecom_logo.svg.png" width={120} />
                 </Grid>
             </Grid>
-            <Grid container spacing={2}>
-                
-                {renderSliders(1)}
+            <Grid container spacing={2}>  
+                {renderSliders(1, onSliderChange)}
             </Grid>
+            <Button variant="contained" onClick={()=> {
+                if (client) {
+                    client.publish('info/resistors', JSON.stringify(resistor))
+                }
+            }}>Submit</Button>
         </Container>
     );
 }
